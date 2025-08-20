@@ -1,4 +1,3 @@
-Here’s a clean, professional README you can use for your Flutter AI Quiz App:
 
 ---
 
