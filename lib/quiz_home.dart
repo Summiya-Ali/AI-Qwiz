@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'generative_language_service.dart';
+import 'firebase_service.dart';
 import 'quiz_details_screen.dart';
+import 'analytics.dart';
 
 class QuizHomeScreen extends StatefulWidget {
   @override
@@ -8,214 +11,385 @@ class QuizHomeScreen extends StatefulWidget {
 }
 
 class _QuizHomeScreenState extends State<QuizHomeScreen> {
-  final List<Map<String, String>> _allQuizzes = [
-    {
-      'id': '1',
-      'title': 'General Knowledge',
-      'description': 'Test your general knowledge with a fun quiz!',
-    },
-    {
-      'id': '2',
-      'title': 'Science Quiz',
-      'description': 'How well do you know the world of science?',
-    },
-    {
-      'id': '3',
-      'title': 'History Quiz',
-      'description': 'Dive into the past and test your knowledge of history.',
-    },
-    {
-      'id': '4',
-      'title': 'Mathematics Quiz',
-      'description': 'Challenge your math skills with tricky questions.',
-    },
-    {
-      'id': '5',
-      'title': 'Geography Quiz',
-      'description': 'Explore the world and its geography through this quiz.',
-    },
-    // Add more quizzes here in the future
-  ];
+  final Map<String, String> _quizImageMap = {
+    'science': 'science.jpg',
+    'history': 'history.jpg',
+    'general knowledge': 'gkNew.jpg',
+    'geography': 'geogNew.jpg',
+    'mathematics': 'maths.jpg',
+    'english': 'front.jpg',
+  };
 
+  List<Map<String, String>> _allQuizzes = [];
   List<Map<String, String>> _filteredQuizzes = [];
   TextEditingController _searchController = TextEditingController();
-  final IconData _defaultIcon = Icons
-      .quiz_outlined; // Define a single default icon
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _filteredQuizzes.addAll(_allQuizzes); // Initially show all quizzes
+    _fetchQuizzesFromDb();
+  }
+
+  Future<void> _fetchQuizzesFromDb() async {
+    final fetchedQuizzes = await fetchQuizzes();
+    setState(() {
+      _allQuizzes = fetchedQuizzes;
+      _filteredQuizzes = List.from(_allQuizzes);
+    });
   }
 
   void _filterQuizzes(String query) {
     setState(() {
-      if (query.isEmpty) {
-        _filteredQuizzes.clear();
-        _filteredQuizzes.addAll(_allQuizzes);
-      } else {
-        _filteredQuizzes = _allQuizzes
-            .where((quiz) =>
-        quiz['title']!.toLowerCase().contains(query.toLowerCase()) ||
-            quiz['description']!.toLowerCase().contains(query.toLowerCase()))
-            .toList();
-      }
+      _filteredQuizzes = query.isEmpty
+          ? List.from(_allQuizzes)
+          : _allQuizzes.where((quiz) {
+        return quiz['title']!
+            .toLowerCase()
+            .contains(query.toLowerCase()) ||
+            quiz['description']!
+                .toLowerCase()
+                .contains(query.toLowerCase());
+      }).toList();
     });
+  }
+
+  Future<void> _handleQuizSelection(Map<String, String> quiz) async {
+    final options = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => _QuizOptionsDialog(),
+    );
+
+    if (options == null) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final String prompt = createQuizPrompt(
+        topic: quiz['title']!,
+        complexity: options['complexity']!,
+        numQuestions: 5,
+      );
+
+      final List<Map<String, dynamic>> aiQuestions =
+      await GenerativeLanguageService.generateQuiz(prompt);
+
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => QuizDetailsScreen(
+              quizTitle: quiz['title']!,
+              questions: aiQuestions,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to generate quiz: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage('assets/images/back.jpg'),
-            fit: BoxFit.cover,
-          ),
-        ),
-        child: Column(
-          children: [
-            // Custom top text header
-            Container(
-              width: MediaQuery
-                  .of(context)
-                  .size
-                  .width * 0.8,
-              padding: EdgeInsets.symmetric(vertical: 20),
-              decoration: BoxDecoration(
-                color: Colors.deepPurpleAccent.withOpacity(0.7),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    spreadRadius: 3,
-                    blurRadius: 8,
-                  ),
+      body: Stack(
+        children: [
+          // Background Gradient
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.white,
+                  Color(0xFF0D1B2A),
+                  Color(0xFF1B263B),
                 ],
-              ),
-              child: Text(
-                "Let's play!",
-                textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(
-                  fontSize: 32,
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                stops: [0.0, 0.7, 1.0],
               ),
             ),
-            SizedBox(height: 16),
-
-            // Search Bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: TextField(
-                controller: _searchController,
-                onChanged: _filterQuizzes,
-                style: TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Search quizzes...',
-                  hintStyle: TextStyle(color: Colors.white70),
-                  prefixIcon: Icon(Icons.search, color: Colors.white),
-                  suffixIcon: IconButton(
-                    icon: Icon(Icons.clear, color: Colors.white),
-                    onPressed: () {
-                      _searchController.clear();
-                      _filterQuizzes(''); // Clear the filter
+            child: Column(
+              children: [
+                SizedBox(height: 60),
+                Container(
+                  padding: EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                  decoration: BoxDecoration(
+                    color: Colors.deepPurple.withOpacity(0.85),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.deepPurple.withOpacity(0.5),
+                        blurRadius: 12,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ShaderMask(
+                    shaderCallback: (Rect bounds) {
+                      return LinearGradient(
+                        colors: [Colors.white, Colors.deepPurpleAccent.shade100],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ).createShader(bounds);
+                    },
+                    child: Text(
+                      "Let's Play!",
+                      style: GoogleFonts.poppins(
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        shadows: [
+                          Shadow(
+                            blurRadius: 4,
+                            color: Colors.deepPurple.withOpacity(0.5),
+                            offset: Offset(2, 2),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: _filterQuizzes,
+                    style: TextStyle(color: Colors.deepPurple.shade900),
+                    decoration: InputDecoration(
+                      hintText: 'Search quizzes...',
+                      hintStyle: TextStyle(color: Colors.deepPurple.shade300),
+                      prefixIcon: Icon(Icons.search, color: Colors.deepPurple),
+                      suffixIcon: IconButton(
+                        icon: Icon(Icons.clear, color: Colors.deepPurple),
+                        onPressed: () {
+                          _searchController.clear();
+                          _filterQuizzes('');
+                        },
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15.0),
+                        borderSide: BorderSide(
+                          color: Colors.deepPurple.shade200,
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15.0),
+                        borderSide: BorderSide(
+                          color: Colors.deepPurple.shade200,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15.0),
+                        borderSide: BorderSide(
+                          color: Colors.deepPurple,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 16),
+                Expanded(
+                  child: _filteredQuizzes.isEmpty
+                      ? Center(
+                    child: Text(
+                      "No quizzes found.",
+                      style: GoogleFonts.poppins(
+                        color: Colors.deepPurple.shade300,
+                        fontSize: 18,
+                      ),
+                    ),
+                  )
+                      : ListView.builder(
+                    padding: EdgeInsets.symmetric(horizontal: 16.0),
+                    itemCount: _filteredQuizzes.length,
+                    itemBuilder: (context, index) {
+                      return _buildQuizItem(_filteredQuizzes[index]);
                     },
                   ),
-                  filled: true,
-                  fillColor: Colors.deepPurpleAccent.withOpacity(0.5),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15.0),
-                    borderSide: BorderSide.none,
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepPurple.shade100,
+                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text(
+                        "View Analytics",
+                        style: TextStyle(fontSize: 16),
+                      ),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const AnalyticsScreen()),
+                        );
+                      },
+                    ),
                   ),
+                ),
+
+
+              ],
+            ),
+          ),
+          if (_isLoading)
+            Container(
+              color: Colors.black.withOpacity(0.5),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 20),
+                    Text(
+                      'Generating your quiz...',
+                      style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-            SizedBox(height: 16),
+        ],
 
-            // Main content: ListView of quizzes
-            Expanded(
-              child: ListView.builder(
-                padding: EdgeInsets.symmetric(horizontal: 16.0),
-                itemCount: _filteredQuizzes.length,
-                itemBuilder: (context, index) {
-                  return _buildQuizItem(_filteredQuizzes[index]);
-                },
-              ),
-            ),
+      ),
+
+    );
+  }
+
+  Widget _buildQuizItem(Map<String, String> quiz) {
+    final titleKey = quiz['title']?.toLowerCase().trim() ?? 'science';
+    final imageFileName = _quizImageMap[titleKey] ?? 'science.jpg';
+    final imageAsset = 'assets/images/$imageFileName';
+
+    return InkWell(
+      onTap: _isLoading ? null : () => _handleQuizSelection(quiz),
+      child: Container(
+        margin: EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(2, 4)),
           ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Stack(
+            alignment: Alignment.bottomLeft,
+            children: [
+              Image.asset(
+                imageAsset,
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: 150,
+                errorBuilder: (context, error, stackTrace) => Image.asset(
+                  'assets/images/science.jpg',
+                  fit: BoxFit.cover,
+                  height: 150,
+                  width: double.infinity,
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.all(12),
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.black.withOpacity(0.8), Colors.transparent],
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      quiz['title'] ?? "No Title",
+                      style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (quiz['description'] != null)
+                      Text(
+                        quiz['description']!,
+                        style: GoogleFonts.poppins(
+                          color: Colors.white70,
+                          fontSize: 14,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
 
-  // Build each quiz item with gradient color, shadow, and rounded icon
-  // Build each quiz item with gradient color, shadow, and rounded icon
-  Widget _buildQuizItem(Map<String, String> quiz) {
-    return GestureDetector(
-      onTap: () {
-        // Navigate to QuizDetailsScreen using the named route
-        Navigator.pushNamed(
-          context,
-          '/quizDetails',
-          arguments: {
-            'quizId': quiz['id'],
-            'quizTitle': quiz['title'],
-          },
-        );
-      },
-      child: Container( // This is the child of the GestureDetector
-        margin: EdgeInsets.symmetric(vertical: 8.0),
-        padding: EdgeInsets.all(15.0),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.purpleAccent, Colors.white],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(15),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              spreadRadius: 3,
-              blurRadius: 8,
-            ),
-          ],
-        ),
-        child: ListTile(
-          leading: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white, // Optional background color for the circle
-            ),
-            child: Center(
-              child: Icon(
-                _defaultIcon, // Use the single default icon
-                color: Colors.deepPurpleAccent,
-                size: 28,
-              ),
-            ),
-          ),
-          title: Text(
-            quiz['title']!,
-            style: GoogleFonts.poppins(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          subtitle: Text(
-            quiz['description']!,
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              color: Colors.white70,
-            ),
-          ),
-        ),
+class _QuizOptionsDialog extends StatefulWidget {
+  @override
+  __QuizOptionsDialogState createState() => __QuizOptionsDialogState();
+}
+
+class __QuizOptionsDialogState extends State<_QuizOptionsDialog> {
+  String _selectedComplexity = 'Easy';
+  final List<String> _complexities = [
+    'Easy',
+    'Medium',
+    'Hard',
+    'Very Hard for an expert'
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Select Quiz Complexity'),
+      content: DropdownButton<String>(
+        value: _selectedComplexity,
+        isExpanded: true,
+        items: _complexities
+            .map((complexity) =>
+            DropdownMenuItem(value: complexity, child: Text(complexity)))
+            .toList(),
+        onChanged: (val) => setState(() => _selectedComplexity = val!),
       ),
+      actions: [
+        TextButton(
+          child: Text('Cancel'),
+          onPressed: () => Navigator.pop(context, null),
+        ),
+        ElevatedButton(
+          child: Text('Generate Quiz'),
+          onPressed: () =>
+              Navigator.pop(context, {'complexity': _selectedComplexity}),
+        ),
+      ],
     );
+
+
+
   }
 }
