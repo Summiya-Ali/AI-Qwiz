@@ -1,5 +1,4 @@
 
----
 
 # AI Qwiz App (Flutter) 🚀
 
@@ -57,6 +56,4 @@ This app provides personalized quizzes using AI-generated questions based on cho
 
 ---
 
-If you want, I can also **rewrite this README in a shorter, “GitHub ready” format** with screenshots and video link embedded neatly, so it looks professional and clean.
 
-Do you want me to do that?
